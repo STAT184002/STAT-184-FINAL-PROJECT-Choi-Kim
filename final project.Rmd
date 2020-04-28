@@ -1,0 +1,351 @@
+---
+title: "STAT 184 Final Project: COVID-19 South Korea"
+output: html_notebook
+date: 04/28/2020
+author: Soung Mun Kim & Hogeun Choi
+---
+
+# Idea & Goal
+The main goal of this final project is to analyze how variabes such as sex and age are related to an infection rate of Covid-19 . Also, since Covid-19 is known as extremely contagious disease, we want to analyze whether it has a realtionship between an infection rate of Covid-19 and the population density or not in South Korea.
+
+# How sex and age are related to an infection rate of Covid-19 and how population density related to an an infection rate of Covid-19 in South Korea?
+
+
+```{r message=FALSE, warning=FALSE}
+rm(list = ls())
+devtools::install_github("cardiomoon/kormaps2014")
+devtools::install_github("cardiomoon/moonBook2")
+# These two packages take some time to install (Just for your information.)
+install.packages("carData")
+library(DataComputing)
+library(dplyr)
+library(tidyr)
+library(readxl)
+library(lubridate)
+library(ggplot2)
+library(kormaps2014)
+library(moonBook2)
+library(car)
+```
+
+## Preprocess the dataset
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+Patient <- read.csv("PatientInfo.csv")
+Region <- read.csv("Region.csv")
+TotalCensus <- read_excel("Census 2015~2018.xlsx")
+Korpop <- read_excel("korpop.xlsx")
+```
+
+```{r}
+# View datasets
+head(Patient)
+head(Region)
+head(TotalCensus)
+head(Korpop)
+
+#Checking NA in the dataset
+colSums(is.na(Patient))
+colSums(is.na(Region))
+colSums(is.na(TotalCensus))
+colSums(is.na(Korpop))
+```
+
+There are "NA"s in global_num, sex, birth_year, age, disease, infection_order, infected_by, and contact_number variables in the Patient dataset. So, we clean the dataset as filling missing values as mean in the Patient dataset.
+
+```{r}
+#Filling missing values in the Patient dataset
+Fill_na <- function(df) {
+  na_cols <- names(which(colSums(is.na(df)) != 0))
+  for (i in na_cols)
+    df[, i][is.na(df[, i])] <- mean(df[, i], na.rm = T)
+  return(df)
+}
+Patient <- Fill_na(Patient)
+
+colSums(is.na(Patient))
+```
+
+## EDA (exploratory data analysis)
+
+```{r}
+#glimpse(Patient)
+
+#Making space to NA in sex and age variables
+Patient$sex[Patient$sex == ""] <- "NA"
+Patient$age[Patient$age == ""] <- "NA"
+Patient$age[Patient$age == "100s"] <- "90s"
+Patient$age[Patient$age == "66s"] <- "60s"
+
+Patient# arrange dataset by adding ratio variales
+TOTAL <- as.numeric(TotalCensus[1,2])
+TotalCensus <-
+TotalCensus%>%
+  select(Age, `Total Population`,`Total Men`,`Total Women`)%>%
+  mutate(total_ratio = `Total Population`/TOTAL)%>%
+  mutate(Men_ratio = `Total Men` / `Total Population`)%>%
+  mutate(Women_ratio = `Total Women` / `Total Population`)%>%
+  subset( ,c(1,2,5,3,6,4,7))
+# women ratio and men ratio
+p <- c(TotalCensus[1,5],TotalCensus[1,7])
+names(p) <-c("Male","Female")
+p <- as.numeric(p)
+x <-Patient%>%
+group_by(sex)%>%
+summarise(Total = n())%>%
+filter(sex!='NA')%>%
+arrange(desc(sex))
+
+# women and men in the population in Korea 
+x$null <- p
+xtest <- x$Total 
+x
+```
+
+## How sex is related with infection rate of COVID-19 in South Korea?
+
+
+There are confirmed COVID 19 patients: 1402 males and 1798 females in South Korea. Also, in this table, null column shows the ratio of male and female based on total census in South Korea.  
+
+```{r}
+# using chi-square test for checking that it has the difference between ratio of men and women in COVID19 confirmed people and ratio of men and women in the population in Korea
+
+chisq.test(xtest,p=p)
+```
+```{r}
+#graph
+x$obs <- x$Total/sum(x$Total)
+x%>%
+  gather(type,prob,null,obs)%>%
+  ggplot(aes(x=sex, y=prob, fill=type))+
+  geom_bar(stat='identity',position = 'dodge') +
+  ylab("ratio")
+```
+
+On the graph, "null" bar shows the population ratio of sex and the "obs" bar shows the confirmed case ratio of sex.  By looking at the data, we can say there is a valid difference between "null" and "obs". The female group contains more confirmed cases than male group. Also if you see the Chi-square Goodness of fit test result, we can see the p-value is almost equal to zero, which means that the distribution of two group is different from the theoretical one (population distribution). Through this graph, we can assume that women are more likely to be infected with the COVID 19 than men in South Korea.
+
+## How age is related with infection rate of COVID-19 in South Korea?
+
+
+```{r warning=FALSE}
+#null probll
+Ages <- c("Total","0s","0s","10s","10s","20s","20s","30s","30s","40s","40s","50s","50s","60s","60s","70s","70s","80s","80s","90s","90s","90s")
+
+Census_by_Age <- 
+  TotalCensus%>%
+  select(Age,`Total Population`)%>%
+  filter(Age!="85 Over",Age!="15 Less",Age!="15~64",Age!="65 Over",Age!="Average Age",Age!="Median Age")%>%
+  cbind(Ages)%>%
+  group_by(Ages)%>%
+  summarise("Total" = sum(`Total Population`))
+Census_by_Age
+null_prob <- (Census_by_Age$Total/TOTAL)[1:10]
+```
+
+This table shows total population which is grouped by their age. There are larger populations from 20s to 50s ages than other age groups.
+
+```{r}
+
+#Observed prob
+Observed<- Patient%>%
+  group_by(age)%>%
+  summarise(total=n())%>%
+  filter(age!=" ")%>%
+  arrange(age)
+Observed
+```
+
+This table shows total of confirmed patients which is grouped by their age. There are more COVID 19 confirmed patients in 20s and 50s ages than in other age groups. In particular, there are more patients in their 20s than those of other ages in confirmed cases.
+
+
+```{r}
+null_prob
+Observed$null <- as.vector(null_prob)
+
+#chi square test 
+realob<-Observed$total
+chisq.test(realob,p=null_prob)  
+
+#graph 
+graph <-Observed%>%
+  mutate(real_prob=(Observed$total/sum(Observed$total)))%>%
+  gather("type","prob",null,real_prob)
+graph%>%
+ggplot(aes(x=age, y=prob, fill=type))+
+  geom_bar(stat = 'identity',position='dodge')+
+  ylab("ratio")
+```
+
+On the graph, "null" bar shows the population ratio of age and the "obs" bar shows the confirmed case ratio of age. By looking at the data, we can say there is a valid differences among age groups. Also if you see the Chi-square Goodness of fit test result, the p-value is almost equal to zero. It means that the distributions of two groups (population and confirmed cases) are different. Through this graph, the ratios of patients(obs) in 0s through 40s are less than the ratios of the population(null) except 20s. The ages of 50s to 90s, however, contain larger ratio of confirmed case(obs) than the ratio of population(null).
+
+
+```{r}
+#contribution
+Observed%>%
+  mutate(real_prob=(Observed$total/sum(Observed$total)))%>%
+  mutate(difference=real_prob-null)%>%
+  select(age,difference)%>%
+  ggplot(aes(x=age, y=difference))+
+  geom_bar(stat = 'identity')
+```
+
+As you can see the grah, 20s cotnributes the most to the Chi-square test. 0s and 10s gropus contribute in second and third. Since COVID-19 is very contagious, we can assume that the activity of the age groups may affect to the incidence rate of the age groups.
+
+## How population density and provinces' traits are related with infection rate of COVID-19 in South Korea
+### SouthKorea map based on population distribution by Province
+
+![](1606442.png)
+
+```{r}
+ggplot(Korpop,aes(map_id=Code,fill=`Total Population`))+
+  geom_map(map=kormap1,colour='black',size=0.1)+
+  expand_limits(x=kormap1$long,y=kormap1$lat)+
+  scale_fill_gradientn(colours=c('white','orange','red'))+
+  ggtitle("Population Distribution by Province")
+```
+
+This graph shows the total population distribution by province in South Korea. 
+As you see the graph, Gyeonggi-do, red color, has the most highest total poulation and Seoul, orange color, Gyeongsangbuk-do, Gyeongsngnam-do, Busan, and so on.
+
+
+```{r}
+# ratio of confirmed patients grouped by province
+Patitnet_total <- 
+  Patient%>%
+  count()%>%
+  as.numeric()
+
+Patient%>%
+  group_by(province)%>%
+  summarise(total = n())%>%
+  mutate(ratio = total/ Patitnet_total) %>%
+  arrange(desc(ratio))
+```
+
+In February, more than three hundreds of confirmed cases suddenly occurred in Gyeongsangbuk-do when a woman in Gyeongsangbuk-do was infected with COVID 19 and went to a religious assembly attened by more than one thousand people. Therefore, this table shows Gyongsangbuk-do has the highest confirmed cases. However, except in this certain cases, the areas (Provinces) with the largest total population have a high level of COVID infection like Gyeonggi-do and Seoul.
+
+
+### Regression model
+
+```{r warning=FALSE}
+#group by province factor in Patient data.
+Patientprovince <- Patient%>%
+  group_by(province)%>%
+  summarise(total_patient = n())
+
+#arrange the province name in Region and change to the vector. 
+prov_name <- Region%>%
+  group_by(province)%>%
+  summarise(total = n())
+prov_name <- as.vector(prov_name$province)
+
+#filter the needed province data. 
+Region_prov <- Region%>%
+  filter(city %in% prov_name)
+
+Region_prov <- Region_prov%>%
+  select(city,elementary_school_count,kindergarten_count,university_count,academy_ratio,elderly_population_ratio)
+
+
+#combine two data by using left join.
+
+Regression_table <-Patientprovince%>%
+  left_join(Region_prov, by = c("province"="city"))
+```
+
+```{r}
+Regression_table <- Korpop%>%
+  group_by(Province)%>%
+  summarise(`Total Population`)%>%
+  right_join(Regression_table, by = c("Province"="province"))
+
+Regression_table
+```
+
+We organized and added the data. The data above includes Total poulation and totla patient and other features of the regions such as the number of the universities and elderly population ratio.
+
+```{r}
+#factor analysis 
+panel.cor <- function(x, y){
+    usr <- par("usr"); on.exit(par(usr))
+    par(usr = c(0, 1, 0, 1))
+    r <- round(cor(x, y), digits=2)
+    txt <- paste0("R = ", r)
+    cex.cor <- 0.8/strwidth(txt)
+    text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+#correlation matrix
+pairs(~total_patient+`Total Population`+elementary_school_count+kindergarten_count+university_count+academy_ratio+elderly_population_ratio,data = Regression_table,panel = panel.smooth, lower.panel = panel.cor)
+```
+
+The above graph shows the correlation between the factors. Some of the correlations are high and some of them are not. We can see that the number of university and confirmed case in a region is correlated by 0.7, which might be significant. Therefore, we can check this by using regression modelling.
+
+```{r}
+#regression modeling
+Regression_model <- lm(total_patient ~
+`Total Population`+elementary_school_count+kindergarten_count+university_count+academy_ratio+elderly_population_ratio ,data=Regression_table)
+
+
+#test with the regression model
+Regression_model;summary(Regression_model)
+```
+
+Since only the pvalue of the university_count predictor is less than 0.05, we can say the only university_count predictor is significant predictor at 5% level. 
+However, this model is not significant becasuse F test of P value does not less than 0.05. Therefore, we have to drop some predictor which is not significant and fit signficant model for looking up which predictor is significant.
+
+```{r}
+#Choose what to remove by using VIF.
+vif(Regression_model)
+```
+We remove three top "VIF" variables, which are "elementary school count","kindergarten count" and "Total Population". 
+```{r}
+#remove elemenatary school, kindergarten factor, and Total population
+Regression_model <- lm(total_patient ~
+university_count+academy_ratio+elderly_population_ratio ,data=Regression_table)
+Regression_model;summary(Regression_model); vif(Regression_model)
+```
+As you can see. the p-value becomes lower from 0.0724 to 0.0206. Also the VIF of all three variables are less than 5. This model is more developed one than before. Although, we think it would be better to remove other variables with p-value over 0.05. Therefore, we removed "academy_ratio" and "elderly_population_ratio". 
+
+```{r}
+#remove academy ratio and elderly population ratio.
+Regression_model <- lm(total_patient ~
+university_count ,data=Regression_table)
+Regression_model;summary(Regression_model)
+```
+The result says as the province has 1 more university, 14.804 more people are infected in the province.Also the model says infected people will be -104.727 if there is no university in the province.
+```{r}
+#graph of the regression model
+Regression_table%>%
+ggplot(aes(x=university_count, y=total_patient))+
+geom_smooth(method = lm)+
+geom_point()
+```
+This model contains only university variable. This has lesser p-value for both F-test and T-test. We can say this is valid model with more accuracy. The intercept interpretation does not make sense, but we can still see the correlation between two variables.
+
+###Now, compare the population and the university variable.
+```{r}
+Regression_model <- lm(total_patient ~
+`Total Population`,data=Regression_table)
+Regression_model;summary(Regression_model)
+```
+The result says as the province has 1 more population, 5.536e-05 more people are infected in the province.Also the model says infected people will be 2.504e+01 if there is no university in the province.
+
+```{r}
+#graph of the regression model
+Regression_table%>%
+ggplot(aes(x=`Total Population`, y=total_patient))+
+geom_smooth(method = lm)+
+geom_point()
+```
+
+
+##Conclusion
+
+First, sex is related to an infection rate of COVID-19 in South Korea. The female ratio of confirmed case has larger than 5% difference compare to the female ratio of population. A p-value of Goodness of fit test support the assertion. The P-value is almost zero. This means there are clear different between two. We cannot say that female is more vulnerable to the COVID-19 variable, but there is clear different between the # of confirmed male and that of female in South Korea. The sex variable is valid explanatory variable with more than 95% confident.
+
+Second, age is also related to an infection rate of COVID-19 in South Korea. There is a high difference between the population ratio and confirmed case ratio in 0s, 10s and 20s. We also did the Goodness of fit test for the age groups. The p-value is also less than 0.05 and nearly zero. we can say age is valid explanatory variable with more than 95% of the confident. In 0s and 10s groups, null (population ratio) is larger and in 20s, obs (confirmed case ratio) is larger. By seeing these differences, we assume that the activity rate of the age group may affect to the infection rate. Since the 20s get around a lot, the infection ratio of 20s is higher. In contrast, becasue 0s and 10s groups get around less than other ages and people take cares a lot to kids, infection ratio(obs) of the 0s and 10s groups are lower. We can assume the levels of activities in each groups can affect to the infection rate. We can see another pattern in the graph. In older age groups of 50s to 90s, infection ratio(obs) is higher than population ratio(null). We can also assume as people gets older, it's easier to be infected because older people have weaker immune system.
+
+Third, the population density of the region is valid variable to explain the difference of infection rate among the provinces. We made a regression model that explain the number of the infected cases in the provinces. The p-value of the both T-test and F-test are low enough to say it is significant. However, university variable and population is highly correlated and show multi-correlation in the regression model. We prefer to choose university variable as a valid explanatory variable because the p-value of the number of universities in the provinces is lower. We think this result is from the high ratio of the 20s among the infected cases. Because most of 20s attends universities in South Korea. we can say the # of the universities is a valid factor that explain more of the variance.
+
+Later, if we have to do analysis this again in the future, we can figure out 20s and 50s are related with each other by using members of the family dataset in South Korea.
