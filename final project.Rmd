@@ -30,7 +30,7 @@ library(car)
 
 ## Preprocess the dataset
 
-```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
 Patient <- read.csv("PatientInfo.csv")
 Region <- read.csv("Region.csv")
 TotalCensus <- read_excel("Census 2015~2018.xlsx")
@@ -43,7 +43,9 @@ head(Patient)
 head(Region)
 head(TotalCensus)
 head(Korpop)
+```
 
+```{r}
 #Checking NA in the dataset
 colSums(is.na(Patient))
 colSums(is.na(Region))
