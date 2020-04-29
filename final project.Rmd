@@ -30,7 +30,7 @@ library(car)
 
 ## Preprocess the dataset
 
-```{r message=FALSE, warning=FALSE, include=FALSE, paged.print=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
 Patient <- read.csv("PatientInfo.csv")
 Region <- read.csv("Region.csv")
 TotalCensus <- read_excel("Census 2015~2018.xlsx")
